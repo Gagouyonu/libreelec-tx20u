@@ -1,0 +1,107 @@
+name: Build LibreELEC 11.0.6 Generic-legacy (RTL8852AU TX20U Plus)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-os:
+    name: Build LibreELEC OS Image
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - name: 1. Nettoyer et maximiser l'espace disque du runner
+        run: |
+          echo "Libération de l'espace disque..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo docker image prune --all --force || true
+          df -h
+
+      - name: 2. Installer les dépendances système de build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git bc libncurses5-dev libssl-dev \
+            libelf-dev python3 python3-pip lzop gawk wget curl xz-utils patch unzip \
+            default-jre-headless libxml-parser-perl libtool m4 automake libtool-bin \
+            xsltproc xfonts-utils gettext u-boot-tools texinfo
+
+      - name: 3. Cloner LibreELEC 11.0.6
+        run: |
+          git clone --depth 1 -b 11.0.6 https://github.com/LibreELEC/LibreELEC.tv.git
+          cd LibreELEC.tv
+          echo "Dépôt LibreELEC cloné sur tag 11.0.6"
+
+      - name: 4. Injecter le pilote RTL8852AU (Archer TX20U Plus)
+        run: |
+          cd LibreELEC.tv
+          
+          # Créer le paquet linux-driver pour RTL8852AU
+          mkdir -p packages/linux-drivers/RTL8852AU/config
+          
+          # Configuration module autoload
+          echo "8852au" > packages/linux-drivers/RTL8852AU/config/modules.conf
+
+          # Recette package.mk
+          cat << 'EOF' > packages/linux-drivers/RTL8852AU/package.mk
+          # SPDX-License-Identifier: GPL-2.0-or-later
+          # Driver Realtek RTL8852AU (TP-Link Archer TX20U Plus)
+
+          PKG_NAME="RTL8852AU"
+          PKG_VERSION="main"
+          PKG_LICENSE="GPLv2"
+          PKG_SITE="https://github.com/morrownr/8852au-20240409"
+          PKG_URL="https://github.com/morrownr/8852au-20240409/archive/refs/heads/${PKG_VERSION}.tar.gz"
+          PKG_LONGDESC="Realtek RTL8852AU USB Wi-Fi 6 driver"
+          PKG_IS_KERNEL_PKG="yes"
+
+          pre_make_target() {
+            unset LDFLAGS
+          }
+
+          make_target() {
+            make -C ${KERNEL_DIR} \
+                 M=$(pwd) \
+                 ARCH=${TARGET_KERNEL_ARCH} \
+                 CROSS_COMPILE=${TARGET_PREFIX} \
+                 modules
+          }
+
+          makeinstall_target() {
+            mkdir -p ${INSTALL}/$(get_full_module_dir)/RTL8852AU
+            cp 8852au.ko ${INSTALL}/$(get_full_module_dir)/RTL8852AU/
+          }
+          EOF
+
+          # Ajouter RTL8852AU aux options de compilation
+          if [ -d "projects/Generic-legacy" ]; then
+            echo 'ADDITIONAL_DRIVERS+=" RTL8852AU"' >> projects/Generic-legacy/options
+          fi
+          echo 'ADDITIONAL_DRIVERS+=" RTL8852AU"' >> projects/Generic/options
+          echo 'ADDITIONAL_DRIVERS+=" RTL8852AU"' >> distributions/LibreELEC/options
+
+      - name: 5. Compiler l'image LibreELEC (Generic-legacy x86_64)
+        run: |
+          cd LibreELEC.tv
+          PROJECT=Generic-legacy ARCH=x86_64 make image -j$(nproc)
+
+      - name: 6. Vérifier et préparer le livrable
+        run: |
+          cd LibreELEC.tv
+          ls -la target/
+          mkdir -p ../dist
+          cp target/LibreELEC-*.img.gz* ../dist/ || true
+          cp target/LibreELEC-*.tar* ../dist/ || true
+
+      - name: 7. Mettre à disposition l'OS à télécharger
+        uses: actions/upload-artifact@v4
+        with:
+          name: LibreELEC-11.0.6-Generic-legacy-Archer-TX20U-Plus
+          path: dist/*
+          retention-days: 14
