@@ -23,28 +23,37 @@ jobs:
           sudo docker image prune --all --force || true
           df -h
 
-      - name: 2. Installer les dépendances système de build
+      - name: 2. Installer TOUTES les dépendances requises par checkdeps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential git bc libncurses5-dev libssl-dev \
-            libelf-dev python3 python3-pip lzop gawk wget curl xz-utils patch unzip \
-            default-jre-headless libxml-parser-perl libtool m4 automake libtool-bin \
-            xsltproc xfonts-utils gettext u-boot-tools texinfo
+            bash bc bzip2 diffutils gawk gcc g++ gperf gzip file patchutils lzop make patch perl sed tar \
+            unzip wget xz-utils zip zstd \
+            libncurses5-dev libncurses-dev libc6-dev \
+            libjson-perl libparse-yapp-perl libxml-parser-perl \
+            xsltproc default-jre-headless python3 \
+            xfonts-utils bdftopcf \
+            build-essential libssl-dev libelf-dev libtool m4 automake libtool-bin \
+            gettext u-boot-tools texinfo curl
 
       - name: 3. Cloner LibreELEC 11.0.6
         run: |
           git clone --depth 1 -b 11.0.6 https://github.com/LibreELEC/LibreELEC.tv.git
           echo "Dépôt LibreELEC cloné sur tag 11.0.6"
 
-      - name: 4. Injecter le pilote RTL8852AU (TP-Link Archer TX20U Plus)
+      - name: 4. Valider checkdeps
+        run: |
+          cd LibreELEC.tv
+          ./scripts/checkdeps
+
+      - name: 5. Injecter le pilote RTL8852AU (TP-Link Archer TX20U Plus)
         run: |
           cd LibreELEC.tv
 
           COMMIT="865ab0fa91471d595c283d2f3db323f7f15455f5"
           TARBALL="RTL8852AU-${COMMIT}.tar.gz"
 
-          # Pré-télécharger la source dans le cache de LibreELEC
+          # Pré-télécharger la source dans le cache sources/ de LibreELEC
           mkdir -p sources/RTL8852AU
           curl -sL "https://github.com/pulponair/rtl8852au/archive/${COMMIT}.tar.gz" -o "sources/RTL8852AU/${TARBALL}"
           SHA256=$(sha256sum "sources/RTL8852AU/${TARBALL}" | cut -d' ' -f1)
@@ -53,7 +62,7 @@ jobs:
           # Créer le répertoire du paquet
           mkdir -p packages/linux-drivers/RTL8852AU/config
 
-          # Configuration pour autoload au démarrage
+          # Configuration pour autoload du module au boot
           echo "8852au" > packages/linux-drivers/RTL8852AU/config/modules.conf
 
           # Fichier de recette package.mk
@@ -91,25 +100,30 @@ jobs:
           sed -i 's/ADDITIONAL_DRIVERS="RTL8192DU RTL8812AU"/ADDITIONAL_DRIVERS="RTL8192DU RTL8812AU RTL8852AU"/' distributions/LibreELEC/options
           grep ADDITIONAL_DRIVERS distributions/LibreELEC/options
 
-      - name: 5. Compiler l'image LibreELEC (Generic-legacy x86_64)
+      - name: 6. Compiler l'image LibreELEC (Generic-legacy x86_64)
         run: |
           cd LibreELEC.tv
-          PROJECT=Generic DEVICE=Generic-legacy ARCH=x86_64 make image -j$(nproc)
+          PROJECT=Generic DEVICE=Generic-legacy ARCH=x86_64 make image -j$(nproc) 2>&1 | tee ../build.log
 
-      - name: 6. Vérifier et préparer le livrable
+      - name: 7. Vérifier et préparer le livrable et les logs
         if: always()
         run: |
-          cd LibreELEC.tv
-          mkdir -p ../dist
-          if [ -d "target" ]; then
-            ls -la target/
-            cp target/LibreELEC-*.img.gz* ../dist/ 2>/dev/null || true
-            cp target/LibreELEC-*.tar* ../dist/ 2>/dev/null || true
+          mkdir -p dist
+          # Sauvegarde du log principal
+          if [ -f "build.log" ]; then
+            tail -n 200 build.log > dist/build_summary.log
+            cp build.log dist/build_full.log
+          fi
+          # Sauvegarde de l'image si succès
+          if [ -d "LibreELEC.tv/target" ]; then
+            ls -la LibreELEC.tv/target/
+            cp LibreELEC.tv/target/LibreELEC-*.img.gz* dist/ 2>/dev/null || true
+            cp LibreELEC.tv/target/LibreELEC-*.tar* dist/ 2>/dev/null || true
           fi
 
-      - name: 7. Mettre à disposition l'OS à télécharger
+      - name: 8. Mettre à disposition l'OS et les logs
         uses: actions/upload-artifact@v4
-        if: success()
+        if: always()
         with:
           name: LibreELEC-11.0.6-Generic-legacy-Archer-TX20U-Plus
           path: dist/*
