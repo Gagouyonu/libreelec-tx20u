@@ -35,30 +35,39 @@ jobs:
       - name: 3. Cloner LibreELEC 11.0.6
         run: |
           git clone --depth 1 -b 11.0.6 https://github.com/LibreELEC/LibreELEC.tv.git
-          cd LibreELEC.tv
           echo "Dépôt LibreELEC cloné sur tag 11.0.6"
 
-      - name: 4. Injecter le pilote RTL8852AU (Archer TX20U Plus)
+      - name: 4. Injecter le pilote RTL8852AU (TP-Link Archer TX20U Plus)
         run: |
           cd LibreELEC.tv
-          
-          # Créer le paquet linux-driver pour RTL8852AU
+
+          COMMIT="865ab0fa91471d595c283d2f3db323f7f15455f5"
+          TARBALL="RTL8852AU-${COMMIT}.tar.gz"
+
+          # Pré-télécharger la source dans le cache de LibreELEC
+          mkdir -p sources/RTL8852AU
+          curl -sL "https://github.com/pulponair/rtl8852au/archive/${COMMIT}.tar.gz" -o "sources/RTL8852AU/${TARBALL}"
+          SHA256=$(sha256sum "sources/RTL8852AU/${TARBALL}" | cut -d' ' -f1)
+          echo "Source RTL8852AU téléchargée avec SHA256: ${SHA256}"
+
+          # Créer le répertoire du paquet
           mkdir -p packages/linux-drivers/RTL8852AU/config
-          
-          # Configuration module autoload
+
+          # Configuration pour autoload au démarrage
           echo "8852au" > packages/linux-drivers/RTL8852AU/config/modules.conf
 
-          # Recette package.mk
-          cat << 'EOF' > packages/linux-drivers/RTL8852AU/package.mk
+          # Fichier de recette package.mk
+          cat << EOF > packages/linux-drivers/RTL8852AU/package.mk
           # SPDX-License-Identifier: GPL-2.0-or-later
-          # Driver Realtek RTL8852AU (TP-Link Archer TX20U Plus)
+          # Driver Realtek RTL8852AU pour TP-Link Archer TX20U Plus (VID 0x2357:0x013f)
 
           PKG_NAME="RTL8852AU"
-          PKG_VERSION="main"
-          PKG_LICENSE="GPLv2"
-          PKG_SITE="https://github.com/morrownr/8852au-20240409"
-          PKG_URL="https://github.com/morrownr/8852au-20240409/archive/refs/heads/${PKG_VERSION}.tar.gz"
-          PKG_LONGDESC="Realtek RTL8852AU USB Wi-Fi 6 driver"
+          PKG_VERSION="${COMMIT}"
+          PKG_SHA256="${SHA256}"
+          PKG_LICENSE="GPL"
+          PKG_SITE="https://github.com/pulponair/rtl8852au"
+          PKG_URL="https://github.com/pulponair/rtl8852au/archive/\${PKG_VERSION}.tar.gz"
+          PKG_LONGDESC="Realtek RTL8852AU Linux driver"
           PKG_IS_KERNEL_PKG="yes"
 
           pre_make_target() {
@@ -66,41 +75,41 @@ jobs:
           }
 
           make_target() {
-            make -C ${KERNEL_DIR} \
-                 M=$(pwd) \
-                 ARCH=${TARGET_KERNEL_ARCH} \
-                 CROSS_COMPILE=${TARGET_PREFIX} \
-                 modules
+            make V=1 \\
+                 ARCH=\${TARGET_KERNEL_ARCH} \\
+                 KSRC=\$(kernel_path) \\
+                 CROSS_COMPILE=\${TARGET_KERNEL_PREFIX}
           }
 
           makeinstall_target() {
-            mkdir -p ${INSTALL}/$(get_full_module_dir)/RTL8852AU
-            cp 8852au.ko ${INSTALL}/$(get_full_module_dir)/RTL8852AU/
+            mkdir -p \${INSTALL}/\$(get_full_module_dir)/\${PKG_NAME}
+            cp *.ko \${INSTALL}/\$(get_full_module_dir)/\${PKG_NAME}/
           }
           EOF
 
-          # Ajouter RTL8852AU aux options de compilation
-          if [ -d "projects/Generic-legacy" ]; then
-            echo 'ADDITIONAL_DRIVERS+=" RTL8852AU"' >> projects/Generic-legacy/options
-          fi
-          echo 'ADDITIONAL_DRIVERS+=" RTL8852AU"' >> projects/Generic/options
-          echo 'ADDITIONAL_DRIVERS+=" RTL8852AU"' >> distributions/LibreELEC/options
+          # Activer RTL8852AU dans la liste des drivers compilés
+          sed -i 's/ADDITIONAL_DRIVERS="RTL8192DU RTL8812AU"/ADDITIONAL_DRIVERS="RTL8192DU RTL8812AU RTL8852AU"/' distributions/LibreELEC/options
+          grep ADDITIONAL_DRIVERS distributions/LibreELEC/options
 
       - name: 5. Compiler l'image LibreELEC (Generic-legacy x86_64)
         run: |
           cd LibreELEC.tv
-          PROJECT=Generic-legacy ARCH=x86_64 make image -j$(nproc)
+          PROJECT=Generic DEVICE=Generic-legacy ARCH=x86_64 make image -j$(nproc)
 
       - name: 6. Vérifier et préparer le livrable
+        if: always()
         run: |
           cd LibreELEC.tv
-          ls -la target/
           mkdir -p ../dist
-          cp target/LibreELEC-*.img.gz* ../dist/ || true
-          cp target/LibreELEC-*.tar* ../dist/ || true
+          if [ -d "target" ]; then
+            ls -la target/
+            cp target/LibreELEC-*.img.gz* ../dist/ 2>/dev/null || true
+            cp target/LibreELEC-*.tar* ../dist/ 2>/dev/null || true
+          fi
 
       - name: 7. Mettre à disposition l'OS à télécharger
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: LibreELEC-11.0.6-Generic-legacy-Archer-TX20U-Plus
           path: dist/*
