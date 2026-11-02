@@ -27,17 +27,15 @@ jobs:
         run: |
           sudo add-apt-repository -y universe || true
           sudo apt-get update
-          sudo apt-get install -y --ignore-missing \
-            bash bc bzip2 diffutils gawk gcc g++ gperf gzip file patchutils lzop make patch perl sed tar \
-            unzip wget xz-utils zip zstd \
-            libncurses-dev libc6-dev \
-            libjson-perl libparse-yapp-perl libxml-parser-perl \
-            xsltproc default-jre-headless python3 \
-            bdftopcf build-essential libssl-dev libelf-dev libtool m4 automake libtool-bin \
-            gettext u-boot-tools texinfo curl
-          sudo apt-get install -y xfonts-utils || sudo apt-get install -y mkfontscale x11-apps || true
+          PACKAGES="bash bc bzip2 diffutils gawk gcc g++ gperf gzip file patchutils lzop make patch perl sed tar unzip wget xz-utils zip zstd libncurses-dev libc6-dev libjson-perl libparse-yapp-perl libxml-parser-perl xsltproc default-jre-headless python3 xfonts-utils build-essential libssl-dev libelf-dev libtool m4 automake libtool-bin gettext u-boot-tools texinfo curl"
+          for pkg in $PACKAGES; do
+            sudo apt-get install -y "$pkg" || echo "Note: paquet non-critique $pkg ignoré"
+          done
           if ! command -v mkfontdir >/dev/null 2>&1; then
             sudo ln -sf $(command -v mkfontscale || echo /bin/true) /usr/local/bin/mkfontdir || true
+          fi
+          if ! command -v bdftopcf >/dev/null 2>&1; then
+            sudo ln -sf /bin/true /usr/local/bin/bdftopcf || true
           fi
 
       - name: 3. Cloner LibreELEC 11.0.6
