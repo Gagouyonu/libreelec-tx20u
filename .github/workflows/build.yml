@@ -69,7 +69,7 @@ jobs:
           # Configuration pour autoload du module au boot
           echo "8852au" > packages/linux-drivers/RTL8852AU/config/modules.conf
 
-          # Fichier de recette package.mk via Base64 pour garantir l'absence d'erreurs de syntaxe
+          # Fichier de recette package.mk
           echo "IyBTUERYLUxpY2Vuc2UtSWRlbnRpZmllcjogR1BMLTIuMC1vci1sYXRlcgojIERyaXZlciBSZWFsdGVrIFJUTDg4NTJBVSBwb3VyIFRQLUxpbmsgQXJjaGVyIFRYMjBVIFBsdXMgKFZJRCAweDIzNTc6MHgwMTNmKQoKUEtHX05BTUU9IlJUTDg4NTJBVSIKUEtHX1ZFUlNJT049Ijg2NWFiMGZhOTE0NzFkNTk1YzI4M2QyZjNkYjMyM2Y3ZjE1NDU1ZjUiClBLR19TSEEyNTY9ImZhYjQ2Zjg0Y2QxYTVkYmJhMjlhYWY2MzIxMzZjZDY5MjQ3ZDNkYTBhMDJmYzI2M2M3YmJmOTI2YTg3OWQ5OGMiClBLR19MSUNFTlNFPSJHUEwiClBLR19TSVRFPSJodHRwczovL2dpdGh1Yi5jb20vcHVscG9uYWlyL3J0bDg4NTJhdSIKUEtHX1VSTD0iaHR0cHM6Ly9naXRodWIuY29tL3B1bHBvbmFpci9ydGw4ODUyYXUvYXJjaGl2ZS8ke1BLR19WRVJTSU9OfS50YXIuZ3oiClBLR19MT05HREVTQz0iUmVhbHRlayBSVEw4ODUyQVUgTGludXggZHJpdmVyIgpQS0dfSVNfS0VSTkVMX1BLRz0ieWVzIgoKcHJlX21ha2VfdGFyZ2V0KCkgewogIHVuc2V0IExERkxBR1MKfQoKbWFrZV90YXJnZXQoKSB7CiAgbWFrZSBWPTEgXAogICAgICAgQVJDSD0ke1RBUkdFVF9LRVJORUxfQVJDSH0gXAogICAgICAgS1NSQz0kKGtlcm5lbF9wYXRoKSBcCiAgICAgICBDUk9TU19DT01QSUxFPSR7VEFSR0VUX0tFUk5FTF9QUkVGSVh9Cn0KCm1ha2VpbnN0YWxsX3RhcmdldCgpIHsKICBta2RpciAtcCAke0lOU1RBTEx9LyQoZ2V0X2Z1bGxfbW9kdWxlX2RpcikvJHtQS0dfTkFNRX0KICBjcCAqLmtvICR7SU5TVEFMTH0vJChnZXRfZnVsbF9tb2R1bGVfZGlyKS8ke1BLR19OQU1FfS8KfQ==" | base64 -d > packages/linux-drivers/RTL8852AU/package.mk
 
           # Activer RTL8852AU dans la liste des drivers compilés
@@ -79,11 +79,23 @@ jobs:
       - name: 6. Compiler l'image LibreELEC (Generic-legacy x86_64)
         run: |
           cd LibreELEC.tv
+          set -o pipefail
           PROJECT=Generic DEVICE=Generic-legacy ARCH=x86_64 make image -j$(nproc) 2>&1 | tee ../build.log
 
-      - name: 7. Vérifier et préparer le livrable et les logs
+      - name: 7. Afficher le diagnostic d'erreur et préparer le livrable
         if: always()
         run: |
+          echo "=========================================================="
+          echo "=== 80 DERNIERES LIGNES DU JOURNAL DE COMPILATION ==="
+          echo "=========================================================="
+          if [ -f "build.log" ]; then
+            tail -n 80 build.log
+          fi
+          echo "=========================================================="
+          echo "=== LOGS DETAILLES DES SOUS-MODULES (SI DISPONIBLES) ==="
+          echo "=========================================================="
+          find LibreELEC.tv/build.* -name "*.log" -exec echo "--- LOG: {} ---" \; -exec tail -n 40 {} \; 2>/dev/null || true
+
           mkdir -p dist
           if [ -f "build.log" ]; then
             cp build.log dist/
