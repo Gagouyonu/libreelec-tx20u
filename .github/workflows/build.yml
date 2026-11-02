@@ -48,7 +48,6 @@ jobs:
       - name: 4. Sécuriser et valider checkdeps
         run: |
           cd LibreELEC.tv
-          # Empêcher tout blocage interactif dans checkdeps en environnement CI non interactif
           sed -i 's/read -p/#read -p/g' scripts/checkdeps || true
           sed -i 's/exit 1/exit 0/g' scripts/checkdeps || true
           ./scripts/checkdeps || true
@@ -72,36 +71,8 @@ jobs:
           # Configuration pour autoload du module au boot
           echo "8852au" > packages/linux-drivers/RTL8852AU/config/modules.conf
 
-          # Fichier de recette package.mk
-          cat << 'EOF' > packages/linux-drivers/RTL8852AU/package.mk
-# SPDX-License-Identifier: GPL-2.0-or-later
-# Driver Realtek RTL8852AU pour TP-Link Archer TX20U Plus (VID 0x2357:0x013f)
-
-PKG_NAME="RTL8852AU"
-PKG_VERSION="865ab0fa91471d595c283d2f3db323f7f15455f5"
-PKG_SHA256="fab46f84cd1a5dbba29aaf632136cd69247d3da0a02fc263c7bbf926a879d98c"
-PKG_LICENSE="GPL"
-PKG_SITE="https://github.com/pulponair/rtl8852au"
-PKG_URL="https://github.com/pulponair/rtl8852au/archive/${PKG_VERSION}.tar.gz"
-PKG_LONGDESC="Realtek RTL8852AU Linux driver"
-PKG_IS_KERNEL_PKG="yes"
-
-pre_make_target() {
-  unset LDFLAGS
-}
-
-make_target() {
-  make V=1 \
-       ARCH=${TARGET_KERNEL_ARCH} \
-       KSRC=$(kernel_path) \
-       CROSS_COMPILE=${TARGET_KERNEL_PREFIX}
-}
-
-makeinstall_target() {
-  mkdir -p ${INSTALL}/$(get_full_module_dir)/${PKG_NAME}
-  cp *.ko ${INSTALL}/$(get_full_module_dir)/${PKG_NAME}/
-}
-EOF
+          # Fichier de recette package.mk via Base64 pour garantir l'absence d'erreurs de syntaxe
+          echo "IyBTUERYLUxpY2Vuc2UtSWRlbnRpZmllcjogR1BMLTIuMC1vci1sYXRlcgojIERyaXZlciBSZWFsdGVrIFJUTDg4NTJBVSBwb3VyIFRQLUxpbmsgQXJjaGVyIFRYMjBVIFBsdXMgKFZJRCAweDIzNTc6MHgwMTNmKQoKUEtHX05BTUU9IlJUTDg4NTJBVSIKUEtHX1ZFUlNJT049Ijg2NWFiMGZhOTE0NzFkNTk1YzI4M2QyZjNkYjMyM2Y3ZjE1NDU1ZjUiClBLR19TSEEyNTY9ImZhYjQ2Zjg0Y2QxYTVkYmJhMjlhYWY2MzIxMzZjZDY5MjQ3ZDNkYTBhMDJmYzI2M2M3YmJmOTI2YTg3OWQ5OGMiClBLR19MSUNFTlNFPSJHUEwiClBLR19TSVRFPSJodHRwczovL2dpdGh1Yi5jb20vcHVscG9uYWlyL3J0bDg4NTJhdSIKUEtHX1VSTD0iaHR0cHM6Ly9naXRodWIuY29tL3B1bHBvbmFpci9ydGw4ODUyYXUvYXJjaGl2ZS8ke1BLR19WRVJTSU9OfS50YXIuZ3oiClBLR19MT05HREVTQz0iUmVhbHRlayBSVEw4ODUyQVUgTGludXggZHJpdmVyIgpQS0dfSVNfS0VSTkVMX1BLRz0ieWVzIgoKcHJlX21ha2VfdGFyZ2V0KCkgewogIHVuc2V0IExERkxBR1MKfQoKbWFrZV90YXJnZXQoKSB7CiAgbWFrZSBWPTEgXAogICAgICAgQVJDSD0ke1RBUkdFVF9LRVJORUxfQVJDSH0gXAogICAgICAgS1NSQz0kKGtlcm5lbF9wYXRoKSBcCiAgICAgICBDUk9TU19DT01QSUxFPSR7VEFSR0VUX0tFUk5FTF9QUkVGSVh9Cn0KCm1ha2VpbnN0YWxsX3RhcmdldCgpIHsKICBta2RpciAtcCAke0lOU1RBTEx9LyQoZ2V0X2Z1bGxfbW9kdWxlX2RpcikvJHtQS0dfTkFNRX0KICBjcCAqLmtvICR7SU5TVEFMTH0vJChnZXRfZnVsbF9tb2R1bGVfZGlyKS8ke1BLR19OQU1FfS8KfQ==" | base64 -d > packages/linux-drivers/RTL8852AU/package.mk
 
           # Activer RTL8852AU dans la liste des drivers compilés
           sed -i 's/ADDITIONAL_DRIVERS="RTL8192DU RTL8812AU"/ADDITIONAL_DRIVERS="RTL8192DU RTL8812AU RTL8852AU"/' distributions/LibreELEC/options
@@ -116,13 +87,10 @@ EOF
         if: always()
         run: |
           mkdir -p dist
-          # Sauvegarder les logs complets
           if [ -f "build.log" ]; then
             cp build.log dist/
           fi
-          # Chercher tous les logs détaillés en cas d'erreur de sous-paquet
           find LibreELEC.tv/build.* -name "*.log" -exec cp {} dist/ \; 2>/dev/null || true
-          # Sauvegarder l'image générée en cas de succès
           if [ -d "LibreELEC.tv/target" ]; then
             ls -la LibreELEC.tv/target/
             cp LibreELEC.tv/target/LibreELEC-*.img.gz* dist/ 2>/dev/null || true
